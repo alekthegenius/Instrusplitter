@@ -1,6 +1,10 @@
 import streamlit as st
-import demucs
+import demucs.api
 from pydub import AudioSegment
+import numpy as np
+from tempfile import NamedTemporaryFile
+import torch
+from io import BytesIO
 
 st.logo("icon.jpg")
 st.title("Instrusplitter")
@@ -12,6 +16,25 @@ if "adv_settingd" not in st.session_state:
     st.session_state.adv_settingd = False
 if "input_method" not in st.session_state:
     st.session_state.input_method = ""
+if "segment" not in st.session_state:
+    st.session_state.segment = None
+if "split" not in st.session_state:
+    st.session_state.split = False
+if "device" not in st.session_state:
+    st.session_state.device = "cuda" if torch.cuda.is_available() else "cpu"
+if "jobs" not in st.session_state:
+    st.session_state.jobs = 6
+if "file_format" not in st.session_state:
+    st.session_state.file_format = ".mp3"
+if "splitted_files" not in st.session_state:
+    st.session_state.splitted_files = {}
+
+st.session_state.mixing = False
+
+st.cache_data.clear()
+st.cache_resource.clear()
+
+separator = demucs.api.Separator(model=st.session_state.model)
 
 st.session_state.uploaded_files = ""
 
@@ -25,7 +48,7 @@ with st.sidebar:
         with st.expander("Models"):
             st.session_state.model = st.radio(
                 "Model",
-                ["htdemucs", "hdemucs_ft", "htdemucs_6s", "htdemucs_mmi", "mdx", "mdx_extra", "mdx_q", "mdx_extra_q", "SIG"],
+                ["htdemucs", "hdemucs_ft", "htdemucs_6s", "htdemucs_mmi", "mdx", "mdx_extra", "mdx_q", "mdx_extra_q",],
                 captions=[
                     "first version of Hybrid Transformer Demucs. Trained on MusDB + 800 songs. Default model.",
                     "fine-tuned version of htdemucs, separation will take 4 times more time but might be a bit better. Same training set as htdemucs.",
@@ -35,8 +58,13 @@ with st.sidebar:
                     "trained with extra training data (including MusDB test set), ranked 2nd on the track B of the MDX challenge.",
                     "quantized version of the previous models. Smaller download and storage but quality can be slightly worse.",
                     "quantized version of the previous models. Smaller download and storage but quality can be slightly worse.",
-                    "where SIG is a single model from the model zoo.",
                 ]
+            )
+
+        with st.expander("Format"):
+            st.session_state.file_format = st.selectbox(
+                "Choose your perferred audio format for the exported file:",
+                (".mp3", ".wav"),
             )
 
         with st.expander("Search Settings"):
@@ -44,41 +72,108 @@ with st.sidebar:
 
         if st.session_state.adv_settingd:
            with st.expander("Advanced Settings"):
-               pass
+
+               st.session_state.segment = st.slider("Segment", min_value=0, max_value=100, value=st.session_state.segment, step=1)
+
+               st.session_state.device = st.text_input("Device", placeholder="torch.device, str, or None", value=st.session_state.device)
 
 
-        st.form_submit_button("Updated Settings")
+               
 
-if st.session_state.input_method == "Search":
-    st.session_state.input_method = st.selectbox(
+
+        adv_submit_button = st.form_submit_button("Updated Settings")
+
+    if adv_submit_button:
+
+        if st.session_state.segment == 0:
+            separator.update_parameter(split=True, segment=st.session_state.segment, device=st.session_state.device)
+        else:
+            separator.update_parameter(split=False, segment=None, device=st.session_state.device)
+
+
+
+st.session_state.input_method = st.selectbox(
         "Input Method:",
-        ("Search", "Upload File"),
-        index=0
-    )
-else:
-    st.session_state.input_method = st.selectbox(
-        "Input Method:",
-        ("Search", "Upload File"),
-        index=1
+        ("Search", "Upload Files"),
     )
 
 
 with st.form("input"):
+    st.subheader(st.session_state.input_method)
+
     if st.session_state.input_method == "Search":
-        st.session_state.uploaded_files = st.text_input("Search", key="search")
+        st.session_state.uploaded_files = st.text_input("Search", key="search", label_visibility="collapsed")
     else:
-        st.session_state.uploaded_files = st.file_uploader("Upload File", type=["wav", "mp3", "mp4", "aac"], key="upload")
+        st.session_state.uploaded_files = st.file_uploader("Upload Files", type=["wav", "mp3"], accept_multiple_files=True, label_visibility="collapsed")
 
     split_music_button = st.form_submit_button("Split Music")
 
+
 if split_music_button:
-    if st.session_state.uploaded_files is not None:
+    if st.session_state.uploaded_files != []:
+        
         print(st.session_state.uploaded_files)
-        for uploaded_file in st.session_state.uploaded_files:
-                    if uploaded_file.name.endswith(".mp3"):
-                        file = AudioSegment.from_mp3(file)
-                        format = "audio/mp3"
+        with st.spinner("Splitting Files..."):
+
+            
+            st.session_state.splitted_files = {}
+
+            for uploaded_file in st.session_state.uploaded_files:
+                        with st.container(border=True):
+
+                            st.subheader("Splitted Files")
+
+                            if uploaded_file.name.endswith(".mp3"):
+                                uploaded_file_format = ".mp3"
+                            elif uploaded_file.name.endswith(".wav"):
+                                uploaded_file_format = ".wav"
+
+
+                            audio = NamedTemporaryFile(suffix=uploaded_file_format)
+
+                            
+
+                            audio.write(uploaded_file.getvalue())
+
+
+                            audio.seek(0)
+
+                            origin, separated = separator.separate_audio_file(audio.name)
+
+                            st.markdown(f"Original Audio: {uploaded_file.name}")
+                            st.audio(audio.name, format=uploaded_file.type)
+
+                            for stem, source in separated.items():
+
+                                output_file = NamedTemporaryFile(suffix=st.session_state.file_format)
+
+                                demucs.api.save_audio(source, output_file.name, samplerate=separator.samplerate)
+
+                                output_file.seek(0)
+
+                                file_name = f"{st.session_state.uploaded_files.index(uploaded_file)}-{stem}-{uploaded_file.name}" if st.session_state.uploaded_files.index(uploaded_file) >= 1 else f"{stem}-{uploaded_file.name}"
+
+                                mime = "audio/mpeg" if st.session_state.file_format == ".mp3" else "audio/wav"
+
+                                audio_data = output_file.read()
+                                
+                                st.session_state.splitted_files[file_name] = audio_data
+
+                                st.markdown(f"{stem}")
+                                st.audio(output_file.name, format=mime)
+                                st.download_button(f"Download '{file_name}'", data=audio_data, file_name=file_name, mime=mime, key=int(f"{st.session_state.uploaded_files.index(uploaded_file)}{list(separated).index(stem)}"))
+                            
+                            print(st.session_state.splitted_files.keys())
+
+                                  
+            st.balloons()
+
+if st.button("Mix Splitted Tracks", use_container_width=True):
+    if len(st.session_state.splitted_files) > 0:
+        on_click=st.switch_page("pages/mix.py")
+
+
+            
                     
-                    st.audio(uploaded_file, format=format)
 
 

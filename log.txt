@@ -1,0 +1,55 @@
+2024-07-31 13:32:38.527 Uncaught app exception
+Traceback (most recent call last):
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 75, in exec_func_with_error_handling
+    result = func()
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 574, in code_to_exec
+    exec(code, module.__dict__)
+  File "/home/alekv/Instrusplitter/app.py", line 105, in <module>
+    origin, separated = separator.separate_audio_file("./sample-15s.mp3")
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/api.py", line 308, in separate_audio_file
+    return self.separate_tensor(self._load_audio(file), self.samplerate)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/api.py", line 271, in separate_tensor
+    out = apply_model(
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/apply.py", line 216, in apply_model
+    res = apply_model(sub_model, mix, **kwargs, callback_arg=callback_arg)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/apply.py", line 251, in apply_model
+    res = apply_model(model, shifted, **kwargs, callback_arg=callback_arg)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/apply.py", line 290, in apply_model
+    chunk_out = future.result()  # type: th.Tensor
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/utils.py", line 132, in result
+    return self.func(*self.args, **self.kwargs)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/apply.py", line 317, in apply_model
+    out = model(padded_mix)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/demucs/htdemucs.py", line 588, in forward
+    x = rearrange(x, "b c f t-> b c (f t)")
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/einops/einops.py", line 591, in rearrange
+    return reduce(tensor, pattern, reduction="rearrange", **axes_lengths)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/einops/einops.py", line 518, in reduce
+    backend = get_backend(tensor)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/einops/_backends.py", line 53, in get_backend
+    backend = BackendSubclass()
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/einops/_backends.py", line 221, in __init__
+    from . import _torch_specific  # noqa
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/einops/_torch_specific.py", line 128, in <module>
+    allow_ops_in_compiled_graph()
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/einops/_torch_specific.py", line 107, in allow_ops_in_compiled_graph
+    from torch._dynamo import allow_in_graph
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/torch/_dynamo/__init__.py", line 2, in <module>
+    from . import allowed_functions, convert_frame, eval_frame, resume_execution
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/torch/_dynamo/allowed_functions.py", line 26, in <module>
+    from . import config
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/torch/_dynamo/config.py", line 49, in <module>
+    torch.onnx.is_in_onnx_export: False,
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/site-packages/torch/__init__.py", line 1831, in __getattr__
+    return importlib.import_module(f".{name}", __name__)
+  File "/home/alekv/Instrusplitter/env/lib/python3.9/importlib/__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "<frozen importlib._bootstrap>", line 1030, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1004, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 157, in __enter__
+  File "<frozen importlib._bootstrap>", line 172, in _get_module_lock
+NameError: name '_imp' is not defined
