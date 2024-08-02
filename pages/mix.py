@@ -22,7 +22,7 @@ def no_files_found(error=None):
         st.page_link("app.py", label="Go back to the home page")
     else:
         st.markdown("**Error: No splitted files found.** Please split files first, then try again.")
-        st.markdown(f":red[{error}]")
+        st.exception(error)
         st.page_link("app.py", label="Go back to the home page")
 
 

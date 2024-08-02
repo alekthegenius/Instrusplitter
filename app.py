@@ -1,10 +1,11 @@
 import streamlit as st
 import demucs.api
-from pydub import AudioSegment
 import numpy as np
 from tempfile import NamedTemporaryFile
 import torch
-from io import BytesIO
+from pytubefix import YouTube
+from pytubefix.cli import on_progress
+
 
 st.logo("icon.jpg")
 st.title("Instrusplitter")
@@ -97,80 +98,137 @@ st.session_state.input_method = st.selectbox(
         ("Search", "Upload Files"),
     )
 
+def download_video():
+    link = str(st.session_state.search)
 
-with st.form("input"):
+    try:
+        yt = YouTube(link, on_progress_callback=on_progress)
+        streams = yt.streams.filter(only_audio=True)
+    except Exception as e:
+        st.exception(e)
+
+    for stream in streams:
+        st.code(stream, language="python")
+
+    
+
+
+with st.container(border=True):
     st.subheader(st.session_state.input_method)
 
     if st.session_state.input_method == "Search":
         st.session_state.uploaded_files = st.text_input("Search", key="search", label_visibility="collapsed")
+
+
     else:
         st.session_state.uploaded_files = st.file_uploader("Upload Files", type=["wav", "mp3"], accept_multiple_files=True, label_visibility="collapsed")
 
-    split_music_button = st.form_submit_button("Split Music")
+    split_music_button = st.button("Split Music")
 
 
 if split_music_button:
     if st.session_state.uploaded_files != []:
-        
-        print(st.session_state.uploaded_files)
-        with st.spinner("Splitting Files..."):
+        st.session_state.splitted_files = {}
 
-            
-            st.session_state.splitted_files = {}
+        if st.session_state.input_method == "Search":
+            with st.spinner("Splitting Files..."):
+                link = str(st.session_state.uploaded_files)
 
-            for uploaded_file in st.session_state.uploaded_files:
-                        with st.container(border=True):
+                try:
+                    yt = YouTube(link, on_progress_callback=on_progress)
+                    ys = yt.streams.get_audio_only()
 
-                            st.subheader("Splitted Files")
+                    audio = NamedTemporaryFile(suffix=".mp3")
 
-                            if uploaded_file.name.endswith(".mp3"):
-                                uploaded_file_format = ".mp3"
-                            elif uploaded_file.name.endswith(".wav"):
-                                uploaded_file_format = ".wav"
+                    audio_path = ys.download(filename=audio.name[5:-4], output_path=audio.name[:5], mp3=True)
+                    origin, separated = separator.separate_audio_file(audio_path)
 
 
-                            audio = NamedTemporaryFile(suffix=uploaded_file_format)
+                    st.markdown(f"Original Audio: {audio.name}")
+                    st.audio(audio_path, format="audio/mpeg")
 
-                            
+                    for stem, source in separated.items():
 
-                            audio.write(uploaded_file.getvalue())
+                        output_file = NamedTemporaryFile(suffix=".mp3")
+
+                        demucs.api.save_audio(source, output_file.name, samplerate=separator.samplerate)
+
+                        output_file.seek(0)
+
+                        file_name = f"{stem}-{audio.name[5:]}"
+
+                        mime = "audio/mpeg"
+
+                        audio_data = output_file.read()
+                        
+                        st.session_state.splitted_files[file_name] = audio_data
+
+                        st.markdown(f"{stem}")
+                        st.audio(output_file.name, format=mime)
+                        st.download_button(f"Download '{file_name}'", data=audio_data, file_name=file_name, mime=mime, key=int(f"{list(separated).index(stem)}"))
+                except Exception as e:
+                    st.exception(e)
+                
 
 
-                            audio.seek(0)
 
-                            origin, separated = separator.separate_audio_file(audio.name)
 
-                            st.markdown(f"Original Audio: {uploaded_file.name}")
-                            st.audio(audio.name, format=uploaded_file.type)
+        else:
+            with st.spinner("Splitting Files..."):
 
-                            for stem, source in separated.items():
+                for uploaded_file in st.session_state.uploaded_files:
+                            with st.container(border=True):
 
-                                output_file = NamedTemporaryFile(suffix=st.session_state.file_format)
+                                st.subheader("Splitted Files")
 
-                                demucs.api.save_audio(source, output_file.name, samplerate=separator.samplerate)
+                                if uploaded_file.name.endswith(".mp3"):
+                                    uploaded_file_format = ".mp3"
+                                elif uploaded_file.name.endswith(".wav"):
+                                    uploaded_file_format = ".wav"
 
-                                output_file.seek(0)
 
-                                file_name = f"{st.session_state.uploaded_files.index(uploaded_file)}-{stem}-{uploaded_file.name}" if st.session_state.uploaded_files.index(uploaded_file) >= 1 else f"{stem}-{uploaded_file.name}"
+                                audio = NamedTemporaryFile(suffix=uploaded_file_format)
 
-                                mime = "audio/mpeg" if st.session_state.file_format == ".mp3" else "audio/wav"
-
-                                audio_data = output_file.read()
                                 
-                                st.session_state.splitted_files[file_name] = audio_data
 
-                                st.markdown(f"{stem}")
-                                st.audio(output_file.name, format=mime)
-                                st.download_button(f"Download '{file_name}'", data=audio_data, file_name=file_name, mime=mime, key=int(f"{st.session_state.uploaded_files.index(uploaded_file)}{list(separated).index(stem)}"))
-                            
-                            print(st.session_state.splitted_files.keys())
+                                audio.write(uploaded_file.getvalue())
+
+
+                                audio.seek(0)
+
+                                origin, separated = separator.separate_audio_file(audio.name)
+
+                                st.markdown(f"Original Audio: {uploaded_file.name}")
+                                st.audio(audio.name, format=uploaded_file.type)
+
+                                for stem, source in separated.items():
+
+                                    output_file = NamedTemporaryFile(suffix=st.session_state.file_format)
+
+                                    demucs.api.save_audio(source, output_file.name, samplerate=separator.samplerate)
+
+                                    output_file.seek(0)
+
+                                    file_name = f"{st.session_state.uploaded_files.index(uploaded_file)}-{stem}-{uploaded_file.name}" if st.session_state.uploaded_files.index(uploaded_file) >= 1 else f"{stem}-{uploaded_file.name}"
+
+                                    mime = "audio/mpeg" if st.session_state.file_format == ".mp3" else "audio/wav"
+
+                                    audio_data = output_file.read()
+                                    
+                                    st.session_state.splitted_files[file_name] = audio_data
+
+                                    st.markdown(f"{stem}")
+                                    st.audio(output_file.name, format=mime)
+                                    st.download_button(f"Download '{file_name}'", data=audio_data, file_name=file_name, mime=mime, key=int(f"{st.session_state.uploaded_files.index(uploaded_file)}{list(separated).index(stem)}"))
+                                
+                                print(st.session_state.splitted_files.keys())
 
                                   
             st.balloons()
 
 if st.button("Mix Splitted Tracks", use_container_width=True):
     if len(st.session_state.splitted_files) > 0:
-        on_click=st.switch_page("pages/mix.py")
+        st.switch_page("pages/mix.py")
 
 
             
