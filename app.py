@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 import torch
 from pytubefix import YouTube
 from pytubefix.cli import on_progress
+import os
 
 
 st.logo("icon.jpg")
@@ -23,17 +24,24 @@ if "split" not in st.session_state:
     st.session_state.split = False
 if "device" not in st.session_state:
     st.session_state.device = "cuda" if torch.cuda.is_available() else "cpu"
-if "jobs" not in st.session_state:
-    st.session_state.jobs = 6
 if "file_format" not in st.session_state:
     st.session_state.file_format = ".mp3"
 if "splitted_files" not in st.session_state:
     st.session_state.splitted_files = {}
+if "jobs" not in st.session_state:
+    st.session_state.jobs = 0
 
 st.session_state.mixing = False
 
 st.cache_data.clear()
 st.cache_resource.clear()
+
+dir_name = "/tmp/"
+dir = os.listdir(dir_name)
+
+for item in dir:
+    if item.endswith(".mp3"):
+        os.remove(os.path.join(dir_name, item))
 
 separator = demucs.api.Separator(model=st.session_state.model)
 
@@ -49,7 +57,7 @@ with st.sidebar:
         with st.expander("Models"):
             st.session_state.model = st.radio(
                 "Model",
-                ["htdemucs", "hdemucs_ft", "htdemucs_6s", "htdemucs_mmi", "mdx", "mdx_extra", "mdx_q", "mdx_extra_q",],
+                ["htdemucs", "htdemucs_ft", "htdemucs_6s", "hdemucs_mmi", "mdx", "mdx_extra", "mdx_q", "mdx_extra_q",],
                 captions=[
                     "first version of Hybrid Transformer Demucs. Trained on MusDB + 800 songs. Default model.",
                     "fine-tuned version of htdemucs, separation will take 4 times more time but might be a bit better. Same training set as htdemucs.",
@@ -68,15 +76,20 @@ with st.sidebar:
                 (".mp3", ".wav"),
             )
 
-        with st.expander("Search Settings"):
-            pass
-
         if st.session_state.adv_settingd:
            with st.expander("Advanced Settings"):
+                
+                st.markdown("Segment: Length (in seconds) of each segment (Set to Zero for None)")
+            
+                st.session_state.segment = st.slider("Segment", min_value=0, max_value=100, value=st.session_state.segment, step=1)
 
-               st.session_state.segment = st.slider("Segment", min_value=0, max_value=100, value=st.session_state.segment, step=1)
+                st.markdown("Device (torch.device, str, or None): If provided, device on which to execute the computation, otherwise wav.device is assumed. When device is different from wav.device, only local computations will be on device, while the entire tracks will be stored on wav.device. If not specified, will use the command line option.")
 
-               st.session_state.device = st.text_input("Device", placeholder="torch.device, str, or None", value=st.session_state.device)
+                st.session_state.device = st.text_input("Device", placeholder="torch.device, str, or None", value=st.session_state.device)
+
+                st.markdown("Jobs: Number of jobs. This can increase memory usage but will be much faster when multiple cores are available. If not specified, will use the command line option. Only available when device = cpu")
+
+                st.session_state.jobs =  st.slider("Jobs", min_value=0, max_value=len(os.sched_getaffinity(0)), value=st.session_state.jobs, step=1)
 
 
                
@@ -85,17 +98,17 @@ with st.sidebar:
         adv_submit_button = st.form_submit_button("Updated Settings")
 
     if adv_submit_button:
-
-        if st.session_state.segment == 0:
-            separator.update_parameter(split=True, segment=st.session_state.segment, device=st.session_state.device)
-        else:
-            separator.update_parameter(split=False, segment=None, device=st.session_state.device)
+        with st.spinner("Updating Settings"):
+            if st.session_state.segment == 0:
+                separator.update_parameter(split=True, segment=st.session_state.segment, device=st.session_state.device, jobs=st.session_state.jobs)
+            else:
+                separator.update_parameter(split=False, segment=None, device=st.session_state.jobs, jobs=st.session_state.jobs)
 
 
 
 st.session_state.input_method = st.selectbox(
         "Input Method:",
-        ("Search", "Upload Files"),
+        ("Youtube URL", "Upload Files"),
     )
 
 def download_video():
@@ -116,8 +129,8 @@ def download_video():
 with st.container(border=True):
     st.subheader(st.session_state.input_method)
 
-    if st.session_state.input_method == "Search":
-        st.session_state.uploaded_files = st.text_input("Search", key="search", label_visibility="collapsed")
+    if st.session_state.input_method == "Youtube URL":
+        st.session_state.uploaded_files = st.text_input("Youtube URL", key="search", label_visibility="collapsed")
 
 
     else:
@@ -130,7 +143,7 @@ if split_music_button:
     if st.session_state.uploaded_files != []:
         st.session_state.splitted_files = {}
 
-        if st.session_state.input_method == "Search":
+        if st.session_state.input_method == "Youtube URL":
             with st.spinner("Splitting Files..."):
                 link = str(st.session_state.uploaded_files)
 
@@ -138,7 +151,7 @@ if split_music_button:
                     yt = YouTube(link, on_progress_callback=on_progress)
                     ys = yt.streams.get_audio_only()
 
-                    audio = NamedTemporaryFile(suffix=".mp3")
+                    audio = NamedTemporaryFile(suffix=".mp3", delete=False)
 
                     audio_path = ys.download(filename=audio.name[5:-4], output_path=audio.name[:5], mp3=True)
                     origin, separated = separator.separate_audio_file(audio_path)
@@ -149,7 +162,7 @@ if split_music_button:
 
                     for stem, source in separated.items():
 
-                        output_file = NamedTemporaryFile(suffix=".mp3")
+                        output_file = NamedTemporaryFile(suffix=".mp3", delete=False)
 
                         demucs.api.save_audio(source, output_file.name, samplerate=separator.samplerate)
 
@@ -187,7 +200,7 @@ if split_music_button:
                                     uploaded_file_format = ".wav"
 
 
-                                audio = NamedTemporaryFile(suffix=uploaded_file_format)
+                                audio = NamedTemporaryFile(suffix=uploaded_file_format, delete=False)
 
                                 
 
@@ -203,7 +216,7 @@ if split_music_button:
 
                                 for stem, source in separated.items():
 
-                                    output_file = NamedTemporaryFile(suffix=st.session_state.file_format)
+                                    output_file = NamedTemporaryFile(suffix=st.session_state.file_format, delete=False)
 
                                     demucs.api.save_audio(source, output_file.name, samplerate=separator.samplerate)
 

@@ -37,7 +37,7 @@ try:
             print(st.session_state.selected.values())
             print(st.session_state.splitted_files.keys())
 
-            with NamedTemporaryFile(suffix=st.session_state.file_format) as first_file:
+            with NamedTemporaryFile(suffix=st.session_state.file_format, delete=False) as first_file:
                 if st.session_state.file_format == ".mp3":
                     first_file.write(list(st.session_state.splitted_files.values())[0])
                     mixed_audio = AudioSegment.from_mp3(first_file.name)
@@ -49,7 +49,7 @@ try:
 
             for select, source, gain in zip(list(st.session_state.selected.values())[1:], list(st.session_state.splitted_files.values())[1:], list(st.session_state.gains.values())[1:]):
                 if select:
-                    with NamedTemporaryFile(suffix=st.session_state.file_format) as temp_file:
+                    with NamedTemporaryFile(suffix=st.session_state.file_format, delete=False) as temp_file:
                         temp_file.write(source)
 
                         if st.session_state.file_format == ".mp3":
@@ -63,16 +63,19 @@ try:
 
                         st.session_state.overlay_sources.append(sound)
 
-            with NamedTemporaryFile(suffix=st.session_state.file_format) as export_mix:
+            with NamedTemporaryFile(suffix=st.session_state.file_format, delete=False) as export_mix:
                 mixed_audio.export(export_mix, format=st.session_state.file_format[1:])
                 export_mix.seek(0)
                 st.markdown(f"MIXED AUDIO")
-                st.audio(export_mix.name)
+                print(export_mix.name)
+                st.audio(export_mix.read(), format="audio/mpeg" if st.session_state.file_format == '.mp3' else "audio/wav")
                 st.download_button(f"Download Mix File", data=export_mix.read(), file_name="mix_file.mp3", mime=st.session_state.file_format[1:])
                 st.session_state.mixing = False
             
             if st.button("Return to Mixer Panel", use_container_width=True):
                 st.session_state.mixing = False
+
+            
         else:
             print("SELECTING")
             st.session_state.selected = {}
@@ -85,7 +88,7 @@ try:
                     st.subheader(name)
                     st.session_state.selected[name] = st.checkbox("Select", key=name)
                     st.session_state.gains[name] = st.slider("Change Gain", min_value=-100, max_value=100, value=0, step=1, key=(name+"gain"))
-                    st.audio(source)
+                    st.audio(source, format="audio/mpeg" if st.session_state.file_format == '.mp3' else "audio/wav")
             
 
                 mix_submit_button = st.form_submit_button("Mix")
@@ -98,6 +101,7 @@ try:
                 else:
                     st.toast("Please select at least two files to mix")
                     st.session_state.mixing = False
+            
 
 
 
